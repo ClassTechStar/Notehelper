@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<!-- 外观已锁定日间：不再提供日夜切换，data-theme 恒为 light（无首屏换肤脚本，也就没有 FOUC） -->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<!-- 允许双指缩放（无障碍）；界面自身的适配交给页尾 NHZoom 脚本按窗口整体缩放 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" id="themeColor" content="#7CC3E4">
+<!-- 内容安全策略：脚本/样式只允许本地与内联，网络仅放行 DeepSeek 官方接口与本地代理；
+     file: 供安卓 WebView 的 assets 加载路径使用 -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; style-src 'self' file: 'unsafe-inline'; script-src 'self' file: 'unsafe-inline'; connect-src 'self' file: https://api.deepseek.com;">
+<title>笔记助理 · 笔记</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- 锁定 402×874 手机视窗；顶部安全区 59px，底部安全区 34px -->
+<div class="phone">
+
+<!-- 背景填充层（设计稿：background / 背景填充） -->
+<div class="bg" aria-hidden="true"></div>
+
+<main class="page" id="page-notes">
+
+  <!-- 头部：笔记分类按钮 + 科目导航条（设计稿：笔记分类 / 分类标签）
+       科目导航条可横向拖拽，两端按溢出渐隐；
+       点「笔记分类」后导航条里的科目会「瞬移」到下方横幅，形成列表视图 -->
+  <header class="cat-header" id="catHeader">
+    <div class="cat-bar">
+      <div class="cat-title press" id="catTitle" role="button" tabindex="0"
+           aria-expanded="false" aria-controls="catBanner">
+        <img class="cat-icon" src="icons/cursor.svg" alt="">
+        <h1>笔记分类</h1>
+        <img class="cat-caret" src="icons/caretdown.svg" alt="">
+      </div>
+      <nav class="cat-tabs" id="catTabs" aria-label="笔记分类"></nav>
+    </div>
+
+    <!-- 科目横幅（展开式）：科目列表（由上方导航条瞬移而来） + 新建科目标签 -->
+    <div class="cat-banner" id="catBanner">
+      <div class="cb-list" id="cbList"></div>
+      <!-- 新增科目：先只给一个居中按钮，点开后才展开输入行 -->
+      <button class="cb-add-toggle press" id="cbAddToggle" type="button">＋ 新增科目</button>
+      <div class="cb-add" id="cbAddRow" hidden>
+        <input class="cb-input" id="cbInput" type="text" maxlength="8"
+               placeholder="添加科目，如：物理" autocomplete="off" spellcheck="false">
+        <button class="cb-btn press" id="cbAdd" type="button">添加</button>
+      </div>
+      <p class="cb-tip" id="cbTip" role="status"></p>
+    </div>
+  </header>
+
+  <!-- 笔记卡片瀑布流：由 js 从当前用户的 userdata 配置渲染（矩形卡片，样式不变） -->
+  <section class="masonry" aria-label="笔记列表">
+    <div class="col"></div>
+    <div class="col"></div>
+  </section>
+
+  <!-- 该用户暂无笔记时的提示 -->
+  <p id="notes-empty" class="notes-empty" hidden>这个账户还没有笔记。点右上角「＋」新建一条吧。</p>
+
+</main>
+
+<!-- 「我的」页面：头像 + 昵称 + DeepSeek API 密钥设置 -->
+<main class="page page-me" id="page-me" hidden>
+  <header class="me-header">
+    <img class="me-avatar" src="img/avatar.jpg" alt="头像">
+    <div class="me-info">
+      <h1 id="meName">喔糖圆鼠</h1>
+      <span id="meSub">笔记助理 · 已记录 0 篇笔记</span>
+    </div>
+  </header>
+
+  <!-- 历史记录：三类历史各自单开一页，这里只做入口 + 计数 -->
+  <section class="me-card me-histgroup">
+    <h2>历史记录</h2>
+    <p class="me-hint">保存笔记、与 DeepSeek 对话、保存或重生成思维导图，都会在 userdata/&lt;用户名&gt;/ 下留一份记录，可随时回看与回退。</p>
+    <div class="me-hist-list">
+      <button class="me-hist-row press" id="histGoNotes" type="button">
+        <span class="me-hist-ico" aria-hidden="true">笔</span>
+        <span class="me-hist-main">
+          <span class="me-hist-t">笔记历史</span>
+          <span class="me-hist-s" id="histNotesSub">还没有历史版本</span>
+        </span>
+        <span class="me-hist-go" aria-hidden="true">›</span>
+      </button>
+      <button class="me-hist-row press" id="histGoChat" type="button">
+        <span class="me-hist-ico" aria-hidden="true">问</span>
+        <span class="me-hist-main">
+          <span class="me-hist-t">对话历史</span>
+          <span class="me-hist-s" id="histChatSub">还没有和 DeepSeek 聊过</span>
+        </span>
+        <span class="me-hist-go" aria-hidden="true">›</span>
+      </button>
+      <button class="me-hist-row press" id="histGoMap" type="button">
+        <span class="me-hist-ico" aria-hidden="true">图</span>
+        <span class="me-hist-main">
+          <span class="me-hist-t">思维导图历史</span>
+          <span class="me-hist-s" id="histMapSub">还没有导图版本</span>
+        </span>
+        <span class="me-hist-go" aria-hidden="true">›</span>
+      </button>
+    </div>
+  </section>
+
+  <section class="me-card">
+    <h2>DeepSeek API 密钥</h2>
+    <p class="me-hint">用于笔记详情页的智能提问。密钥仅保存在本机（localStorage），不会上传。</p>
+    <div class="me-key-row">
+      <input id="api-key-input" class="me-key" type="password"
+             placeholder="sk-..." autocomplete="off" spellcheck="false">
+      <button id="api-key-toggle" class="me-btn press" type="button">显示</button>
+    </div>
+    <div class="me-actions">
+      <button id="api-key-save" class="me-btn primary press" type="button">保存</button>
+      <button id="api-key-test" class="me-btn press" type="button">测试连接</button>
+    </div>
+    <p id="api-key-status" class="me-status" role="status"></p>
+  </section>
+
+  <!-- 数据备份：全部数据都在本机 localStorage（nh:* 键），导出成一份 JSON 可随时恢复。
+       换机 / 清缓存 / 演示前留档都用它；导出文件包含 API 密钥，提醒用户妥善保管。 -->
+  <section class="me-card">
+    <h2>数据备份</h2>
+    <p class="me-hint">笔记、对话、导图与全部历史版本都只存在本机。定期导出一份备份文件，换机或清缓存后可一键恢复。</p>
+    <div class="me-actions">
+      <button id="backup-export" class="me-btn primary press" type="button">导出全部数据</button>
+      <button id="backup-import" class="me-btn press" type="button">导入备份</button>
+    </div>
+    <input id="backup-file" type="file" accept=".json,application/json" hidden>
+    <p id="backup-status" class="me-status" role="status"></p>
+  </section>
+
+</main>
+
+<!-- ============ 历史记录 · 三个独立子页面 ============
+     从「我的」→「历史记录」进入，各自单开一页；顶部同一条蓝色标题栏 + 左上「返回」。
+     列表外壳（#note-versions / #chat-history / #map-versions）沿用原来那套 .ver-* / .history-item 样式。 -->
+
+<!-- 1) 笔记历史：userdata/<用户名>/history/<笔记id>/v<N>_<动作>_<时间戳>.json -->
+<main class="page page-sub" id="page-hist-notes" hidden>
+  <header class="sub-head">
+    <button class="sub-back press" type="button" data-sub-back>
+      <img src="icons/back.svg" alt=""><span>返回</span>
+    </button>
+    <h1>笔记历史</h1>
+  </header>
+  <p class="me-hint">每次保存笔记都会在 userdata/&lt;用户名&gt;/history/ 里留一份版本文件，可随时回退到任意历史版本；回退前会把当前状态也存成一份，操作可逆。</p>
+  <div class="me-actions">
+    <button id="verClearAll" class="me-btn press" type="button">清除全部历史</button>
+  </div>
+  <div id="note-versions" class="ver-list"></div>
+  <p id="note-versions-empty" class="me-hint">还没有历史版本。编辑任意笔记保存后就会在这里出现。</p>
+</main>
+
+<!-- 2) 对话历史：与 DeepSeek 聊过的笔记会话，点一条跳回对应笔记 -->
+<main class="page page-sub" id="page-hist-chat" hidden>
+  <header class="sub-head">
+    <button class="sub-back press" type="button" data-sub-back>
+      <img src="icons/back.svg" alt=""><span>返回</span>
+    </button>
+    <h1>对话历史</h1>
+  </header>
+  <p class="me-hint">按笔记归档的 DeepSeek 问答，点一条回到那篇笔记继续追问。</p>
+  <div id="chat-history" class="me-history-list"></div>
+  <p id="chat-history-empty" class="me-hint">还没有和 DeepSeek 聊过。打开任意笔记，点左下角「DeepSeek 对话」开始吧。</p>
+</main>
+
+<!-- 3) 思维导图历史：userdata/<用户名>/maps/<科目>/v<N>_<动作>_<时间戳>.json -->
+<main class="page page-sub" id="page-hist-map" hidden>
+  <header class="sub-head">
+    <button class="sub-back press" type="button" data-sub-back>
+      <img src="icons/back.svg" alt=""><span>返回</span>
+    </button>
+    <h1>思维导图历史</h1>
+  </header>
+  <p class="me-hint">AI 生成 / 重新生成导图、以及手动编辑后保存，都会在 userdata/&lt;用户名&gt;/maps/ 里留一份版本文件，可随时回退。</p>
+  <div class="me-actions">
+    <button id="mapVerClearAll" class="me-btn press" type="button">清除全部历史</button>
+  </div>
+  <div id="map-versions" class="ver-list"></div>
+  <p id="map-versions-empty" class="me-hint">还没有导图版本。到「求知」页生成一张思维导图后就会在这里出现。</p>
+</main>
+
+<!-- 「求知」页（参考高德地图首页布局）
+     上半：科目选择 + AI 依据同科目笔记生成的思维导图（像地图一样可缩放 / 平移）
+     下半：社区推荐流（小红书式），拖拽上方把手可展开到近全屏 -->
+<main class="page page-explore" id="page-explore" hidden>
+
+  <!-- 上半：思维导图 -->
+  <section class="map-pane">
+    <div class="map-grid" id="mapGrid" aria-hidden="true"></div>
+
+    <div class="mm-viewport" id="mmViewport">
+      <div class="mm-canvas" id="mmCanvas">
+        <svg class="mm-edges" id="mmEdges" aria-hidden="true"></svg>
+        <div class="mm-nodes" id="mmNodes"></div>
+      </div>
+    </div>
+
+    <!-- 顶部：科目导航（与笔记页的分类条同一套外观与手势）+ 编辑导图 -->
+    <header class="map-head">
+      <nav class="mm-subjects" id="mmSubjects" aria-label="选择科目"></nav>
+      <div class="map-tools">
+        <button class="map-tool press" id="mmEdit" type="button" aria-label="编辑思维导图" title="编辑">
+          <img src="icons/pencil.svg" alt="">
+        </button>
+      </div>
+    </header>
+
+    <!-- 右下角：只剩缩放控件。AI 重生成统一挪进横屏编辑态的「AI 整理」面板，
+         竖屏这个角落不再放按钮（原来那个蓝圆角按钮会挡住导图最右下角） -->
+    <div class="mm-fabs">
+      <div class="mm-zoombar">
+        <button class="mm-zbtn press" id="mmZoomIn" type="button" aria-label="放大">＋</button>
+        <button class="mm-zbtn press" id="mmZoomOut" type="button" aria-label="缩小">－</button>
+        <button class="mm-zbtn press" id="mmFit" type="button" aria-label="适屏">
+          <img src="icons/maximize.svg" alt="">
+        </button>
+      </div>
+    </div>
+
+    <div class="mm-status" id="mmStatus" hidden><span class="mm-dot"></span><span id="mmStatusText"></span></div>
+  </section>
+
+  <!-- 下半：社区推荐流 -->
+  <section class="comm-pane" id="commPane">
+    <div class="comm-handle" id="commHandle" role="button" tabindex="0" aria-label="拖动展开社区">
+      <span class="comm-grip" aria-hidden="true"></span>
+    </div>
+    <div class="comm-head">
+      <span class="comm-title">社区</span>
+      <nav class="comm-tabs" id="commTabs" aria-label="社区分类">
+        <button class="ctab press on" type="button" data-sub="推荐">推荐</button>
+        <button class="ctab press" type="button" data-sub="语文">语文</button>
+        <button class="ctab press" type="button" data-sub="数学">数学</button>
+        <button class="ctab press" type="button" data-sub="英语">英语</button>
+        <button class="ctab press" type="button" data-sub="历史">历史</button>
+      </nav>
+    </div>
+    <div class="comm-body" id="commBody">
+      <div class="masonry">
+        <div class="col"></div>
+        <div class="col"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 搜索页（底栏「搜索」）：两条主流路径 —— 本地关键字即时匹配 / AI 语义检索，
+     结果一律分「本地笔记」与「社区内容」两个分区，各自带命中计数 -->
+<main class="page page-search" id="page-search" hidden>
+
+  <!-- 搜索条：亚克力输入框 + 右侧搜索按钮 -->
+  <header class="search-head">
+    <div class="search-bar">
+      <img class="sb-icon" src="icons/search.svg" alt="">
+      <input id="sInput" class="sb-input" type="search" placeholder="搜索笔记、社区内容…"
+             autocomplete="off" spellcheck="false" enterkeyhint="search">
+      <button class="sb-clear press" id="sClear" type="button" hidden>清除</button>
+    </div>
+    <button class="sb-go press" id="sGo" type="button">搜索</button>
+  </header>
+
+  <!-- 搜索方式：微软式矩形分段控件（两种主流搜索路径） -->
+  <nav class="search-modes" id="sModes" aria-label="搜索方式">
+    <button class="smode press on" type="button" data-mode="keyword">
+      <b>关键字</b><i>本地即时匹配</i>
+    </button>
+    <button class="smode press" type="button" data-mode="ai">
+      <b>AI 智能</b><i>理解语义与意图</i>
+    </button>
+  </nav>
+
+  <div class="search-scroll" id="sScroll">
+
+    <!-- AI 总览：AI 理解到的意图 + 没有现成条目时的直接回答 -->
+    <section class="ai-brief" id="sBrief" hidden></section>
+
+    <!-- 分区一：本地笔记 -->
+    <section class="sr-group" id="sNotesGroup" hidden>
+      <header class="sr-head">
+        <span class="sr-dot dot-note" aria-hidden="true"></span>
+        <h2>本地笔记</h2>
+        <span class="sr-src">我的笔记库</span>
+        <span class="sr-count" id="sNotesCount"></span>
+      </header>
+      <div class="sr-list" id="sNotesList"></div>
+    </section>
+
+    <!-- 分区二：社区内容 -->
+    <section class="sr-group" id="sCommGroup" hidden>
+      <header class="sr-head">
+        <span class="sr-dot dot-comm" aria-hidden="true"></span>
+        <h2>社区内容</h2>
+        <span class="sr-src">其它作者的笔记</span>
+        <span class="sr-count" id="sCommCount"></span>
+      </header>
+      <div class="sr-list" id="sCommList"></div>
+    </section>
+
+    <!-- 初始态 / 检索中 / 无结果 -->
+    <div class="sr-state" id="sState"></div>
+  </div>
+</main>
+
+<!-- 底部导航栏（设计稿：底部导航栏 笔记/求知/+/搜索/我的） -->
+<nav class="bottom-nav" aria-label="底部导航">
+  <button class="nav-item on press" aria-label="笔记">笔记</button>
+  <button class="nav-item press" aria-label="求知">
+    求知<svg class="up" viewBox="0 0 12 12" aria-hidden="true"><path d="M6 10V2M2.5 5.5 6 2l3.5 3.5" stroke="#E8443A" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="nav-add press" aria-label="新建笔记"><img src="icons/aiadd.svg" alt=""></button>
+  <button class="nav-item press" aria-label="搜索">搜索</button>
+  <button class="nav-item press" aria-label="我的">我的</button>
+</nav>
+
+<!-- 笔记详情页（共享元素转场目标；按 笔记问答.png：返回/编辑按钮 + 米黄笔记正文 + Deepseek 提问浮层） -->
+<div id="detail" class="detail" hidden>
+  <div class="detail-backdrop" aria-hidden="true"></div>
+  <div class="detail-panel">
+    <button class="detail-topbtn detail-close press" type="button" aria-label="返回">
+      <img src="icons/back.svg" alt=""><span>返回</span>
+    </button>
+    <button class="detail-topbtn detail-edit press" type="button" aria-label="编辑笔记">
+      <img src="icons/edit.svg" alt="">
+    </button>
+    <div class="detail-hero"></div>
+    <div class="detail-content"></div>
+
+    <!-- 底部居中：DeepSeek 对话触发按钮 -->
+    <button class="chat-trigger press" type="button" aria-label="与 DeepSeek 对话">
+      <img src="icons/ask.svg" alt=""><span>DeepSeek 对话</span>
+    </button>
+  </div>
+
+  <!-- DeepSeek 对话面板（按 笔记问答.png：贴底、约半屏起，随对话向上生长，最高 70% 屏高）
+       结构：极简头部 → 消息流 → 引导问题（首次回答后出现两个）→ 附件条 → 输入条 + 右侧附件按钮 -->
+  <div class="chat" hidden>
+    <div class="chat-head">
+      <span class="chat-title">DeepSeek 智能提问</span>
+      <button class="chat-close press" type="button" aria-label="收起对话">收起</button>
+    </div>
+
+    <div class="chat-msgs" aria-live="polite"></div>
+
+    <!-- 首次回答后出现的两个相关引导问题 -->
+    <div class="chat-guides" aria-label="引导问题"></div>
+
+    <!-- 已选附件（可移除） -->
+    <div class="chat-files" hidden></div>
+
+      <!-- 输入条：左侧麦克风（点按=录一段语音附件）+ 输入框（深色），右侧蓝色按钮（空态=添加附件，有内容=发送） -->
+      <div class="chat-input-row">
+        <div class="chat-input-bar">
+          <button class="chat-mic press" type="button" aria-label="录一段语音附件">
+            <img src="icons/microphone.svg" alt="">
+          </button>
+          <textarea class="chat-input" rows="1" placeholder="输入问题，或点左侧麦克风录音…"></textarea>
+        </div>
+      <button class="chat-action press" type="button" aria-label="添加附件">
+        <img src="icons/add.svg" alt="">
+      </button>
+      <input class="chat-file" type="file" accept=".txt,.md,.markdown,.json,.csv,text/*" hidden>
+      <input class="chat-img-file" type="file" accept="image/*" multiple hidden>
+
+      <!-- 附件类型气泡：点「＋」后先弹出来，让用户选录音 / 图片 / 文件 -->
+      <div class="chat-attach" id="chatAttach" role="menu" aria-label="选择附件类型" hidden>
+        <button class="ca-item press" type="button" role="menuitem" data-kind="audio">
+          <img class="ca-ico" src="icons/mic.svg" alt="">
+          <span class="ca-txt">录音</span>
+        </button>
+        <button class="ca-item press" type="button" role="menuitem" data-kind="image">
+          <img class="ca-ico" src="icons/gallery.svg" alt="">
+          <span class="ca-txt">图片</span>
+        </button>
+        <button class="ca-item press" type="button" role="menuitem" data-kind="file">
+          <img class="ca-ico" src="icons/file.svg" alt="">
+          <span class="ca-txt">文件</span>
+        </button>
+        <span class="ca-caret" aria-hidden="true"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 笔记编辑面板（右上「编辑」/ 底栏「＋」打开）：文字编辑 + 图片上传 + 录音
+     放在 #detail 之外，这样从笔记列表直接新建时也能覆盖全屏 -->
+<div class="editor" hidden>
+  <div class="editor-head">
+    <span class="editor-title" id="edHeadTitle">编辑笔记</span>
+    <button class="editor-btn editor-cancel press" type="button">取消</button>
+    <button class="editor-btn editor-save press" type="button">保存</button>
+  </div>
+
+  <div class="editor-body">
+    <label class="ed-label" for="edTitle">标题</label>
+    <input id="edTitle" class="ed-input" type="text" placeholder="笔记标题" autocomplete="off" spellcheck="false">
+
+    <!-- 分类不在编辑器里改：新建笔记继承当前筛选的科目，已有笔记分类恒不变。
+         这里只保留「新建科目」入口，方便一边记笔记一边补科目。 -->
+    <label class="ed-label" id="edNewTagLabel" for="edNewTag">新建科目</label>
+    <div class="ed-tag-add" id="edTagAdd">
+      <input id="edNewTag" class="ed-tag-input" type="text" maxlength="8"
+             placeholder="新科目名" autocomplete="off" spellcheck="false">
+      <button id="edAddTag" class="ed-tag-btn press" type="button">＋ 新建科目</button>
+    </div>
+
+    <!-- 摘要可手填：AI 不可用（未配密钥 / 请求失败）时，用户仍能自己写并保存。
+         留空则保存时由 AI 依据正文重新总结；手填的内容 AI 不覆盖。 -->
+    <label class="ed-label" for="edDesc">摘要（可手动填写）</label>
+    <textarea id="edDesc" class="ed-area" rows="2" maxlength="120"
+              placeholder="自己写一句；留空则由 AI 总结"></textarea>
+    <p class="ed-sub" id="edAiHint">留空保存时由 AI 依据正文重新总结；未配置密钥则用正文首段兜底。手填的内容不会被覆盖。</p>
+
+    <!-- 正文是「块」编辑器：段落文字之间可以插入图片 / 文档 / 录音，像 Word 一样 -->
+    <label class="ed-label" for="edRich">正文</label>
+    <div id="edRich" class="ed-rich" contenteditable="true" role="textbox"
+         aria-multiline="true" data-ph="点这里开始写……（下方按钮可插入录音 / 图片 / 文档）"></div>
+
+    <p class="ed-hint" id="edHint"></p>
+  </div>
+
+  <!-- 底部工具条：上一行字体格式，下一行插入录音 / 图片 / 文档（带名称） -->
+  <div class="ed-tools" id="edTools">
+    <div class="et-row et-fmt">
+      <button class="et-btn press" type="button" data-fmt="bold" title="加粗" aria-label="加粗"><b>B</b></button>
+      <button class="et-btn press" type="button" data-fmt="italic" title="斜体" aria-label="斜体"><i>I</i></button>
+      <button class="et-btn press" type="button" data-fmt="underline" title="下划线" aria-label="下划线"><u>U</u></button>
+      <button class="et-btn press" type="button" data-fmt="code" title="行内代码" aria-label="行内代码">&lt;/&gt;</button>
+      <button class="et-btn press" type="button" data-fmt="quote" title="引用" aria-label="引用">&#10078;</button>
+      <button class="et-btn press" type="button" data-fmt="ul" title="项目符号" aria-label="项目符号">&#8226;&#8226;&#8226;</button>
+      <button class="et-btn press" type="button" data-fmt="ol" title="编号列表" aria-label="编号列表">1.</button>
+      <button class="et-btn press" type="button" data-fmt="clear" title="清除格式" aria-label="清除格式">Aa</button>
+    </div>
+    <div class="et-row et-ins">
+      <button class="et-btn et-wide press" type="button" data-ins="audio" id="edRec">
+        <img src="icons/mic2.svg" alt="">
+        <span class="et-name" id="edRecLabel">录音</span>
+      </button>
+      <button class="et-btn et-wide press" type="button" data-ins="image" id="edAddImg">
+        <img src="icons/gallery.svg" alt="">
+        <span class="et-name">图片</span>
+      </button>
+      <button class="et-btn et-wide press" type="button" data-ins="file" id="edAddDoc">
+        <img src="icons/doc.svg" alt="">
+        <span class="et-name">文档</span>
+      </button>
+    </div>
+  </div>
+
+  <input id="edImgFile" type="file" accept="image/*" multiple hidden>
+  <input id="edDocFile" type="file" multiple hidden>
+</div>
+
+<!-- 思维导图编辑（横屏）：进入时收起下方社区并旋转为横屏，退出即恢复 -->
+<div class="mm-editor" id="mmEditor" hidden>
+  <div class="mm-editor-inner" id="mmEditorInner">
+    <!-- 左上角只做「科目 + 导图名」显示；右侧深色工具条承载全部编辑动作 -->
+    <header class="mme-head">
+      <div class="mme-titlecard">
+        <i class="mme-accent" id="mmeAccent" aria-hidden="true"></i>
+        <span class="mme-sub" id="mmeSub">数学</span>
+        <span class="mme-name" id="mmeName">思维导图</span>
+      </div>
+      <div class="mme-tools">
+        <button class="mme-btn press" id="mmeRef" type="button" aria-label="引用社区笔记到该节点">
+          <img class="mme-ico" src="icons/stick.svg" alt=""><span>引用</span>
+        </button>
+        <button class="mme-btn press" id="mmeRename" type="button" aria-label="重命名该节点">
+          <img class="mme-ico" src="icons/write.svg" alt=""><span>编辑</span>
+        </button>
+        <button class="mme-btn press" id="mmeDelete" type="button" aria-label="删除该节点">
+          <img class="mme-ico" src="icons/eraser.svg" alt=""><span>删除</span>
+        </button>
+        <button class="mme-btn mme-ai press" id="mmeTidy" type="button" aria-label="AI 整理思维导图">
+          <img class="mme-ico" src="icons/magicpen.svg" alt=""><span>AI 整理</span>
+        </button>
+        <span class="mme-sep" aria-hidden="true"></span>
+        <button class="mme-btn press" id="mmeCancel" type="button">退出</button>
+        <button class="mme-btn mme-save press" id="mmeSave" type="button">保存</button>
+      </div>
+    </header>
+    <div class="mme-body">
+      <div class="mme-viewport" id="mmeViewport">
+        <div class="mm-canvas" id="mmeCanvas">
+          <svg class="mm-edges" id="mmeEdges" aria-hidden="true"></svg>
+          <div class="mm-nodes" id="mmeNodes"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 编辑态的「引用」：刻意放在旋转层里面（.mm-editor-inner），
+         这样它跟画布一起转 → 同样是横屏；左栏本地笔记、右栏社区笔记，
+         点一条挂到选中节点上，再点一次取消 -->
+    <div class="mmref" id="mmRefPicker" hidden>
+      <header class="mmref-top">
+        <span class="mmref-who" id="mmRefWho">引用到节点</span>
+        <span class="mmref-hint" id="mmRefHint">点一条笔记挂到该节点 · 再点一次取消</span>
+        <button class="mmref-done press" id="mmRefClose" type="button">完成</button>
+      </header>
+      <div class="mmref-cols">
+        <section class="mmref-col">
+          <header class="mmref-ch">
+            <span class="mmref-ct">本地笔记</span>
+            <span class="mmref-cn" id="mmRefLocalN"></span>
+          </header>
+          <div class="mmref-list" id="mmRefLocal"></div>
+        </section>
+        <section class="mmref-col">
+          <header class="mmref-ch">
+            <span class="mmref-ct">社区笔记</span>
+            <span class="mmref-cn" id="mmRefCommN"></span>
+          </header>
+          <div class="mmref-list" id="mmRefComm"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- 「AI 整理」：和上面的「引用」一样刻意放进旋转层（.mm-editor-inner），
+         所以这个对话框本身就是横屏。左栏四个方向，右栏给用户自由发挥的输入框；
+         点「开始生成」后先盖一层跑马灯（沿整块屏幕外框绕圈），再回填新导图。 -->
+    <div class="mmai" id="mmAiPanel" hidden>
+      <header class="mmai-top">
+        <span class="mmai-title" id="mmAiTitle">AI 整理</span>
+        <span class="mmai-hint" id="mmAiHint">选一个方向，或在右栏写清你的要求</span>
+      </header>
+      <div class="mmai-body">
+        <section class="mmai-left">
+          <div class="mmai-lb">改一改的方向</div>
+          <div class="mmai-opts" id="mmAiOpts">
+            <button class="mmai-opt press" type="button" data-guide="slim">
+              <span class="mmai-t">精简主干</span>
+              <span class="mmai-d">只留大板块，砍掉细碎重复的要点</span>
+            </button>
+            <button class="mmai-opt press" type="button" data-guide="deep">
+              <span class="mmai-t">展开细节</span>
+              <span class="mmai-d">主干不动，把每块下的要点补具体</span>
+            </button>
+            <button class="mmai-opt press" type="button" data-guide="exam">
+              <span class="mmai-t">按考点重组</span>
+              <span class="mmai-d">不照笔记顺序，按常考考点重新分块</span>
+            </button>
+            <button class="mmai-opt press" type="button" data-guide="miss">
+              <span class="mmai-t">查漏补缺</span>
+              <span class="mmai-d">对照我的笔记，补上没覆盖的知识点</span>
+            </button>
+          </div>
+        </section>
+        <section class="mmai-right">
+          <label class="mmai-lb" for="mmAiText">自由发挥（选填）</label>
+          <textarea class="mmai-area" id="mmAiText" rows="3" maxlength="200"
+                    placeholder="例：按时间顺序重排；把「意象手法」拆得更细；把重复的要点合并；一级主题都用四字短语……"></textarea>
+          <div class="mmai-note" id="mmAiNote">写了自己的要求就按你的来；留空则直接重生成一版。</div>
+        </section>
+        <footer class="mmai-acts">
+          <button class="mmai-btn press" id="mmAiCancel" type="button">取消</button>
+          <button class="mmai-btn mmai-go press" id="mmAiGo" type="button">开始生成</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- 生成中：跑马灯绕屏幕外框跑一圈（::after 是 2px 亮环，::before 是贴边内发光，
+         自身再带外发光），文案由 JS 按所选方向替换 -->
+    <div class="mmaibeam" id="mmAiBeam" hidden>
+      <div class="mmaibeam-card">
+        <span class="mmaibeam-t" id="mmAiBeamText">正在重排导图…</span>
+        <span class="mmaibeam-s">AI 正在读你的笔记，请稍候</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 社区笔记 / 思维导图节点 详情（只读浮层，从卡片共享元素展开）
+     两种内容共用同一个外壳：社区笔记（community）与导图节点（node）
+     底部按钮由 JS 按内容类型生成（引用到导图 / 引用笔记 / 收藏） -->
+<div class="cmm-detail" id="cmmDetail" hidden>
+  <div class="cmm-backdrop" id="cmmBackdrop"></div>
+  <div class="cmm-sheet" id="cmmSheet">
+    <div class="cmm-head">
+      <span class="cmm-head-title" id="cmmHeadTitle">社区笔记</span>
+      <button class="cmm-close press" id="cmmClose" type="button">收起</button>
+    </div>
+    <div class="cmm-scroll" id="cmmScroll"></div>
+    <div class="cmm-foot" id="cmmFoot"></div>
+  </div>
+</div>
+
+<!-- 引用选择器：把社区笔记引用到导图节点（选节点）/ 从节点引用社区笔记（选笔记） -->
+<div class="ref-picker" id="refPicker" hidden>
+  <div class="rp-backdrop" id="rpBackdrop"></div>
+  <div class="rp-sheet">
+    <div class="rp-head">
+      <span class="rp-title" id="rpTitle">选择节点</span>
+      <button class="rp-close press" id="rpClose" type="button">取消</button>
+    </div>
+    <div class="rp-scroll" id="rpScroll"></div>
+  </div>
+</div>
+
+<!-- 删除科目确认弹窗（长按科目项弹出）
+     全屏遮罩居中卡片：点遮罩不关闭，只能在弹窗里「取消」或「确认删除」 -->
+<div class="cfm" id="tagDelModal" hidden>
+  <div class="cfm-scrim" id="cfmScrim"></div>
+  <div class="cfm-card" role="dialog" aria-modal="true" aria-labelledby="cfmTitle" aria-describedby="cfmText">
+    <h2 class="cfm-title" id="cfmTitle">删除科目</h2>
+    <p class="cfm-text" id="cfmText"></p>
+    <div class="cfm-acts">
+      <button class="cfm-btn press" id="cfmCancel" type="button">取消</button>
+      <button class="cfm-btn cfm-danger press" id="cfmOk" type="button">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 轻提示（保存 / AI 摘要 / 回退结果） -->
+<div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+
+</div><!-- /.phone -->
+<script>
+/* 视口适配：按窗口大小把 402×874 的手机视窗整体缩放到放得下（等比、居中）。
+   用 CSS zoom 而不是 transform:scale —— zoom 之后 getBoundingClientRect / offsetLeft /
+   clientX 全部仍处在同一坐标系里，应用内部的地图拖拽 / 捏合 / 飞行动画零改动。
+   键盘弹出（宽度不变、高度变小）不重算，避免打字时整个界面跟着缩一下；
+   浏览器不支持 zoom 时 z 恒为 1，行为与旧版（固定尺寸居中）一致。 */
+(function () {
+  var W = 402, H = 874, MIN = 0.4, MAX = 1.6;
+  var ok = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('zoom', '1');
+  var lastW = -1, maxH = 0, z = 1;
+  function fit() {
+    var w = window.innerWidth, h = window.innerHeight;
+    if (w !== lastW) { lastW = w; maxH = h; }
+    else if (h > maxH) { maxH = h; }          // 同宽下只记最大高度：键盘弹出不算
+    if (!ok) { z = 1; return; }
+    z = Math.max(MIN, Math.min(MAX, Math.min(w / W, maxH / H)));
+    var ph = document.querySelector('.phone');
+    if (ph) ph.style.zoom = z;
+  }
+  fit();
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', fit);
+  /* 飞行层等 body 直属元素需要拿到当前倍率做坐标换算 */
+  window.NHZoom = { get: function () { return z; } };
+})();
+</script>
+<script src="js/user.js"></script>
+<script src="js/app.js"></script>
+<script src="js/explore.js"></script>
+<script src="js/search.js"></script>
+</body>
+</html>

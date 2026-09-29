@@ -1,0 +1,6 @@
+# 用户配置目录（结构占位）
+# 运行时各用户数据存于浏览器本地（localStorage），语义等同 userdata/<用户名>.json：
+#   nh:accounts        账户索引 [{name,username,createdAt}]
+#   nh:current         当前登录用户名
+#   nh:user:<用户名>   该用户 profile {username,password,createdAt,apiKey,chats}
+# 在「我的」页可「导出配置」把当前用户 profile 下载为 <用户名>.json 落到此目录。

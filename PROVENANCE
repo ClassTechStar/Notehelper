@@ -18,9 +18,10 @@
 - 来源：<https://iconsax.io>（Iconsax Free）
 - 许可：免费用于个人与商业项目；作者建议保留出处署名（"a link back to iconsax.io is
   appreciated"），本仓库已在下方署名，未强制要求。
-- 存放：`www/icons/`（20 个 SVG），与安卓壳
-  `android/app/src/main/assets/www/icons/` **逐文件 md5 一致**（项目约定：改图标须两边同步）。
-- 原始母本保留在 `iconsax/`（**不可直接编辑**，编辑请用 `www/icons/` 的副本）。
+- 存放：`www/icons/`（20 个 SVG），与安卓壳打包路径
+  `android/…/assets/www/icons/`（构建时由 syncWww 自动同步）**逐文件 md5 一致**
+  （项目约定：改图标须两边同步，改 `www/icons/` 即可）。
+- 原始母本保留在 `iconsax.zip`（**不可直接编辑**，编辑请用 `www/icons/` 的副本）。
 - 其中 7 个图标（`maximize` / `search` / `mic` / `mic2` / `gallery` / `file` / `doc`）
   已从白色改为各自容器墨色，以适配锁定的浅色界面；录制态另用
   `filter: brightness(0) invert(1)` 反白。
@@ -50,7 +51,8 @@
 | `stick.svg` | 导图「引用」 |
 | `write.svg` | 导图节点「重命名」 |
 
-> 注：`www/add.svg` 为早期遗留的 `aiadd` 重复副本，当前已无引用，保留仅为历史一致。
+> 注：`www/add.svg`（根目录遗留副本）已于 2026-09-30 清理删除；正式图标统一在
+> `www/icons/add.svg`。
 
 ## 3. AI 大模型服务 — DeepSeek
 
@@ -70,13 +72,18 @@
 
 以下为项目自带的设计/示例素材，用于界面展示与 README 配图：
 
-- `www/bg.png`、`www/img/avatar.jpg`、`www/img/history-timeline.jpg`、
-  `www/img/math-derivative.jpg`、`www/note-history.jpg`、`www/note-math.jpg`
-- `Resource/background.png`、`Resource/Deepseek.jpg`、`Resource/Deepseek.webp`
-- `Resource/Note/`、`download/笔记详情页/`（设计稿/参考图）
+- `www/bg.jpg`（2026-09-30 由 2.4MB 的 bg.png 压缩而来，原始 PNG 见仓库根
+  `background.png` / 历史归档 zip）、`www/img/avatar.jpg`（同日压缩瘦身）
+- `Resource/`（设计素材，历史目录；当前仓库以 zip 归档保存）
+- `download/`（设计稿参考，历史目录，同上）
 
 > ⚠️ 维护提示：上述图片若含有第三方摄影/插画素材，请作者核对授权；本团队默认其为
 > 自绘或已获授权的设计素材。
+>
+> 🧹 2026-09-30 资产清理：删除了无引用的死资产 `note-history.jpg`、`note-math.jpg`、
+> `img/history-timeline.jpg`、`img/math-derivative.jpg` 与根目录 `add.svg`
+> （`img/math-derivative.jpg` 的路径字符串仍保留在 app.js 的演示数据迁移逻辑里，
+> 仅作字符串比对、不再加载文件）。
 
 ## 6. 构建与发布
 
@@ -85,4 +92,4 @@
 
 ---
 
-最后更新：2026-09-22
+最后更新：2026-09-30

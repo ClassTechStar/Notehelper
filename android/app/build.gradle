@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+def wwwDir = rootProject.file('../www')
+
+// 构建前把 ../www 同步进 assets/www/（与 MainActivity 的
+// file:///android_asset/www/index.html 加载路径一致；CI 与本地构建共用）
+tasks.register('syncWww', Copy) {
+    from wwwDir
+    into layout.buildDirectory.dir('generated/assets/www')
+}
+
+android {
+    namespace 'com.notehelper.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.notehelper.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs += layout.buildDirectory.dir('generated/assets')
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    lint {
+        abortOnError false
+    }
+}
+
+tasks.named('preBuild') { dependsOn 'syncWww' }

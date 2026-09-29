@@ -1,0 +1,12 @@
+{
+  "name": "notehelper",
+  "private": true,
+  "description": "Notehelper 笔记助理 —— 纯静态前端 + WebView 壳；本 package.json 仅用于开发期冒烟测试",
+  "scripts": {
+    "test": "playwright test",
+    "web": "node server.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}
