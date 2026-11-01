@@ -203,4 +203,30 @@ test.describe('Notehelper 冒烟', function () {
     expect(json.app).toBe('notehelper-backup');
     expect(Object.keys(json.data).some(function (k) { return k.indexOf('nh:user:') === 0; })).toBeTruthy();
   });
+
+  test('8. 隐藏页渲染延迟到回到本页（防瀑布流高度失明）', async function ({ page }) {
+    await mockAI(page);
+    await page.goto('/');
+    // 给首张卡片打标记 → 隐藏页面后触发渲染 → 应跳过（标记保留，不被盲重建冲掉）；
+    // 恢复可见后再渲染 → 正常重建（标记消失、卡片总数不变）
+    await page.evaluate(function () {
+      document.querySelector('.masonry .col .card').setAttribute('data-marker', 'keep');
+      document.getElementById('page-notes').hidden = true;
+      window.NHNotes.render();
+    });
+    var keptWhileHidden = await page.evaluate(function () {
+      return !!document.querySelector('.masonry .col .card[data-marker]');
+    });
+    await page.evaluate(function () {
+      document.getElementById('page-notes').hidden = false;
+      window.NHNotes.render();
+    });
+    var rebuiltWhenVisible = await page.evaluate(function () {
+      return !document.querySelector('.masonry .col .card[data-marker]');
+    });
+    var total = await page.locator('.masonry .card').count();
+    expect(keptWhileHidden).toBe(true);
+    expect(rebuiltWhenVisible).toBe(true);
+    expect(total).toBe(18);                               // 种子笔记一个不少
+  });
 });

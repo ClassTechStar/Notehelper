@@ -736,6 +736,7 @@
   }
 
   /* ---------------- 生成 / 载入某个科目 ---------------- */
+  var genSeq = 0;                          // 生成序号：竞态守卫用（见 generate 内）
   function generate(sub, force, guide) {
     var notes = notesOf(sub);
     if (!notes.length) {
@@ -746,7 +747,12 @@
     var g = guideOf(guide);
     setStatus(g ? ('正在按「' + g.name + '」重排「' + sub + '」的思维导图…')
                 : ('正在用 AI 梳理「' + sub + '」的思维导图…'), true);
+    /* 竞态守卫：AI 返回前用户可能已切到别的科目（或对同一科目再发一次生成）。
+       只有「仍然是当前科目、且没有更新的一次生成」时才允许结果落地，
+       否则旧结果会把新科目的画布顶掉。 */
+    var seq = ++genSeq;
     return buildAiTree(sub, notes, guide).then(function (root) {
+      if (seq !== genSeq || sub !== curSubject) return false;
       curTree = root;
       var prev = NHUser.getMindmap(sub);
       /* 自由输入那次把用户原话存进 guide，历史记录里能看出这一版是怎么来的 */
@@ -759,6 +765,7 @@
         + (g ? '（方向：' + g.name + '）' : '') + ' · 可缩放平移，进「编辑」后用「AI 整理」可换方向重做', false, true);
       return true;
     }).catch(function (err) {
+      if (seq !== genSeq || sub !== curSubject) return false;   // 过期的失败也不打扰新科目
       curTree = buildLocalTree(sub, notes);   // 兜底结果不落盘：下次有密钥时会重新用 AI 生成
       var m = (err && err.message) || '';
       setStatus(m === 'NO_KEY'
@@ -1037,7 +1044,12 @@
     return card;
   }
 
+  /* 页面隐藏时卡片 offsetHeight 恒为 0（比如从搜索页引用社区笔记会触发到这里），
+     此时只记脏标记，等 onShow 回到本页再渲染，否则瀑布流高度均衡会失明。 */
+  var commDirty = false;
   function renderCommunity() {
+    if (PAGE.hidden) { commDirty = true; return; }
+    commDirty = false;
     var host = E.commBody.querySelector('.masonry');
     if (!host) return;
     var cols = host.querySelectorAll('.col');
@@ -1938,6 +1950,7 @@
   /* ---------------- 显示到「求知」页时再渲染（隐藏状态下量不到尺寸） ---------------- */
   function onShow() {
     if (!comm.inited) { renderCommunity(); comm.inited = true; }
+    else if (commDirty) renderCommunity();   // 隐藏期间被延迟的社区流刷新
     // 科目可能在「笔记」页被新增 / 删除，每次进入本页都对一次科目行
     if (subjects().indexOf(curSubject) < 0) { curTree = null; curSubject = bestSubject(); }
     renderSubjects();

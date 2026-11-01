@@ -97,7 +97,9 @@ function handleStatic(req, res) {
   let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
   const filePath = path.normalize(path.join(WWW, urlPath));
-  if (!filePath.startsWith(WWW)) {
+  // 注意必须带分隔符比较：'www' 是 'www2' 这类同级目录名的前缀，
+  // 裸 startsWith(WWW) 会把 www2 里的文件当成站内文件放行
+  if (filePath !== WWW && !filePath.startsWith(WWW + path.sep)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   fs.readFile(filePath, function (err, data) {

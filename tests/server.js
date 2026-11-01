@@ -15,7 +15,8 @@ http.createServer(function (req, res) {
   let p = decodeURIComponent((req.url || '/').split('?')[0]);
   if (p === '/') p = '/index.html';
   const file = path.normalize(path.join(ROOT, p));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
+  // 带分隔符比较，防 'www' / 'www2' 这类同级目录名的前缀绕过
+  if (file !== ROOT && !file.startsWith(ROOT + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, function (err, data) {
     if (err) { res.writeHead(404); res.end('Not Found'); return; }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' });

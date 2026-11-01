@@ -475,6 +475,7 @@
   }
   function start(opts) {
     opts = opts || {};
+    if (rec && rec.state === 'recording') return false;   // 重入守卫：已在录音时拒绝再次启动
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
       if (opts.onError) opts.onError('当前环境不支持录音（需 https 或 localhost，且允许麦克风权限）');
       return false;
@@ -1016,7 +1017,15 @@
     return card;
   }
 
+  /* 页面处于 display:none 时卡片 offsetHeight 恒为 0，此时渲染会让瀑布流
+     「高度均衡」退化成按张数交替（隐藏期间被异步触发的场景：收藏社区笔记、
+     历史子页回退、AI 摘要异步回写等）。这里改成：隐藏期间只记脏标记，
+     等回到本页再真正渲染。 */
+  var notesDirty = false;
   function renderList() {
+    var pageNotes = document.getElementById('page-notes');
+    if (pageNotes && pageNotes.hidden) { notesDirty = true; return; }
+    notesDirty = false;
     var cols = masonry.querySelectorAll('.col');
     for (var c = 0; c < cols.length; c++) cols[c].innerHTML = '';
 
@@ -2375,11 +2384,22 @@
     if (elRich && sel && sel.anchorNode && elRich.contains(sel.anchorNode)) syncFmt();
   });
 
+  /* Esc 收起编辑面板：从底栏「＋」新建时详情页并未打开，详情模块的 Esc 处理
+     管不到这里，这里兜一层（详情页开着时仍由详情模块统一处理，避免重复关两层）。 */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || !editor || editor.hidden) return;
+    var d = document.getElementById('detail');
+    if (d && !d.hidden) return;
+    closeEditor();
+  });
+
   /* ---------------- 对外接口 ---------------- */
   window.NHNotes = {
     all: function () { return notes; },
     find: findById,
     render: renderList,
+    /* 底栏切页时调用：页面从隐藏恢复可见，补渲染隐藏期间被延迟的那次列表刷新 */
+    onPageShow: function () { if (notesDirty) renderList(); },
     openEditor: openEditor,
     closeEditor: closeEditor,
     todayLabel: todayLabel,
@@ -2835,6 +2855,8 @@
     }
     // 切页后把滚动回到顶部，避免上一页的滚动位置造成错觉
     for (var j in pages) { if (pages[j]) pages[j].scrollTop = 0; }
+    // 笔记页可能有隐藏期间被延迟的渲染（收藏/回退/AI 摘要回写），补上
+    if (window.NHNotes && NHNotes.onPageShow) NHNotes.onPageShow();
   }
 
   for (var i = 0; i < navItems.length; i++) {
@@ -3205,7 +3227,7 @@
     refreshHeight();
   }
   function startRec() {
-    NHRec.start({
+    var ok = NHRec.start({
       maxMs: REC_MAX_MS,
       onStart: function () { recOn = true; setMicRec(true); renderFiles(); refreshHeight(); },
       onTick: function (s) {
@@ -3225,6 +3247,9 @@
         toast(m, 'err');
       }
     });
+    // 麦克风与附件气泡两条入口可能同时想录：重入被 NHRec 拒绝时如实提示
+    // （不支持录音的场景由 onError 提示过，这里不重复）
+    if (!ok && NHRec.recording()) toast('已经在录音中了', 'err');
   }
 
   /* ---------- 图片：压成 jpeg dataURL 后挂成附件（工具在 NHBody） ---------- */

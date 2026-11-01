@@ -57,6 +57,21 @@ public class MainActivity extends Activity {
                     }
                     return true;
                 }
+                // 笔记正文允许保留 mailto:/tel: 链接，交给系统应用处理
+                if (scheme.equals("mailto")) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_SENDTO, u));
+                    } catch (Exception ignored) {
+                    }
+                    return true;
+                }
+                if (scheme.equals("tel")) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_DIAL, u));
+                    } catch (Exception ignored) {
+                    }
+                    return true;
+                }
                 return false;
             }
         });
