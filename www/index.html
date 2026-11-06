@@ -119,6 +119,28 @@
     <p id="api-key-status" class="me-status" role="status"></p>
   </section>
 
+  <!-- AI 学情报告（学习闭环的「诊断」一环）：汇总笔记 / 导图 / 对话 / 闪卡自测，
+       AI 生成学情分析与复习建议；AI 不可用时展示本地统计版 -->
+  <section class="me-card">
+    <h2>AI 学情报告</h2>
+    <p class="me-hint">汇总你的笔记、思维导图、AI 问答与闪卡自测记录，生成本阶段学情分析与下一步复习建议。</p>
+    <div class="me-actions">
+      <button id="report-gen" class="me-btn primary press" type="button">生成报告</button>
+    </div>
+    <div id="report-body" class="report-body" hidden></div>
+    <p id="report-status" class="me-status" role="status"></p>
+  </section>
+
+  <!-- 演示模式：比赛 / 答辩现场一键就绪（覆盖当前数据，二次确认防误触） -->
+  <section class="me-card">
+    <h2>演示模式</h2>
+    <p class="me-hint">答辩现场一键就绪：载入精选演示笔记、数学思维导图、示例对话与自测记录（将覆盖当前数据，可反复重置；示例对话与自测为预置演示内容）。</p>
+    <div class="me-actions">
+      <button id="demo-load" class="me-btn press" type="button">一键载入演示数据</button>
+    </div>
+    <p id="demo-status" class="me-status" role="status"></p>
+  </section>
+
   <!-- 数据备份：全部数据都在本机 localStorage（nh:* 键），导出成一份 JSON 可随时恢复。
        换机 / 清缓存 / 演示前留档都用它；导出文件包含 API 密钥，提醒用户妥善保管。 -->
   <section class="me-card">
@@ -203,6 +225,9 @@
     <header class="map-head">
       <nav class="mm-subjects" id="mmSubjects" aria-label="选择科目"></nav>
       <div class="map-tools">
+        <button class="map-tool press" id="mmQuiz" type="button" aria-label="AI 闪卡自测" title="自测">
+          <img src="icons/ask.svg" alt="">
+        </button>
         <button class="map-tool press" id="mmEdit" type="button" aria-label="编辑思维导图" title="编辑">
           <img src="icons/pencil.svg" alt="">
         </button>
@@ -609,6 +634,40 @@
     <div class="cfm-acts">
       <button class="cfm-btn press" id="cfmCancel" type="button">取消</button>
       <button class="cfm-btn cfm-danger press" id="cfmOk" type="button">确认删除</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI 闪卡自测（求知页「自测」进入）：竖屏全屏浮层
+     AI 依据同科目笔记出 5 张卡 → 翻卡自评（掌握 / 模糊 / 不会）→ 小结计入「AI 学情报告」；
+     AI 不可用时退回本地出题（按笔记标题 / 摘要拼卡），如实标注来源 -->
+<div class="fcard" id="fcardPanel" hidden>
+  <header class="fcard-head">
+    <button class="fcard-back press" id="fcardClose" type="button" aria-label="关闭自测">
+      <img src="icons/back.svg" alt="">
+    </button>
+    <span class="fcard-title" id="fcardTitle">闪卡自测</span>
+    <span class="fcard-progress" id="fcardProgress"></span>
+  </header>
+  <div class="fcard-body">
+    <p class="fcard-src" id="fcardSrc" role="status"></p>
+    <button class="fcard-card press" id="fcardCard" type="button" aria-label="点按翻看答案">
+      <span class="fcard-face fcard-q" id="fcardQ"></span>
+      <span class="fcard-face fcard-a" id="fcardA" hidden></span>
+    </button>
+    <p class="fcard-hint" id="fcardHint">先想一想，点卡片看答案</p>
+    <div class="fcard-grades" id="fcardGrades" hidden>
+      <button class="fgrade g-good press" type="button" data-grade="good">✓ 掌握</button>
+      <button class="fgrade g-mid press" type="button" data-grade="mid">◐ 模糊</button>
+      <button class="fgrade g-bad press" type="button" data-grade="bad">✗ 不会</button>
+    </div>
+    <div class="fcard-summary" id="fcardSummary" hidden>
+      <h2 id="fcardScore"></h2>
+      <p id="fcardNote"></p>
+      <div class="fcard-sacts">
+        <button class="me-btn press" id="fcardAgain" type="button">再测一轮</button>
+        <button class="me-btn primary press" id="fcardDone" type="button">完成</button>
+      </div>
     </div>
   </div>
 </div>

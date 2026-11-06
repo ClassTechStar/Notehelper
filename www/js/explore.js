@@ -105,7 +105,24 @@
     mmeViewport: document.getElementById('mmeViewport'),
     mmeCanvas: document.getElementById('mmeCanvas'),
     mmeEdges: document.getElementById('mmeEdges'),
-    mmeNodes: document.getElementById('mmeNodes')
+    mmeNodes: document.getElementById('mmeNodes'),
+    /* AI 闪卡自测 */
+    mmQuiz: document.getElementById('mmQuiz'),
+    fcPanel: document.getElementById('fcardPanel'),
+    fcClose: document.getElementById('fcardClose'),
+    fcTitle: document.getElementById('fcardTitle'),
+    fcProgress: document.getElementById('fcardProgress'),
+    fcSrc: document.getElementById('fcardSrc'),
+    fcCard: document.getElementById('fcardCard'),
+    fcQ: document.getElementById('fcardQ'),
+    fcA: document.getElementById('fcardA'),
+    fcHint: document.getElementById('fcardHint'),
+    fcGrades: document.getElementById('fcardGrades'),
+    fcSummary: document.getElementById('fcardSummary'),
+    fcScore: document.getElementById('fcardScore'),
+    fcNote: document.getElementById('fcardNote'),
+    fcAgain: document.getElementById('fcardAgain'),
+    fcDone: document.getElementById('fcardDone')
   };
 
   /* ---------------- 小工具 ---------------- */
@@ -1818,6 +1835,7 @@
     if (lastBBox) viewCtrl.fit(lastBBox, visibleHeight());
   });
   if (E.edit) E.edit.addEventListener('click', enterEdit);
+  if (E.mmQuiz) E.mmQuiz.addEventListener('click', function () { fcStart(curSubject); });
 
   /* 科目导航条：与笔记页分类条共用同一套拖拽 / 渐隐实现 */
   if (E.subjects && window.NHNotes && NHNotes.tabStrip) subjectStrip = NHNotes.tabStrip(E.subjects);
@@ -1924,6 +1942,7 @@
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (E.aiBeam && !E.aiBeam.hidden) return;                  // 正在生成：别让 Esc 把编辑态也收掉
+    if (E.fcPanel && !E.fcPanel.hidden) { fcClose(); return; }  // 闪卡自测先收
     if (E.aiPanel && !E.aiPanel.hidden) { closeAiPanel(); return; }
     if (E.ep && !E.ep.hidden) { closeEditRef(); return; }      // 编辑态「引用」先收
     if (E.refPicker && !E.refPicker.hidden) { closePicker(); return; }
@@ -1940,6 +1959,7 @@
       if (E.aiPanel && !E.aiPanel.hidden) closeAiPanel();
       if (E.refPicker && !E.refPicker.hidden) closePicker();
       if (E.cmmDetail && !E.cmmDetail.hidden) closeSheet();
+      if (E.fcPanel && !E.fcPanel.hidden) fcClose();
     });
   }
 
@@ -1958,6 +1978,7 @@
     if (subjectStrip) requestAnimationFrame(function () { renderSubjects(); });
     if (!curTree) { curSubject = bestSubject(); useSubject(curSubject, false); }
     else { loadRefs(); renderNow(); }
+    if (E.fcPanel && !E.fcPanel.hidden) fcClose();
     if (!E.cmmDetail.hidden) closeSheet();
     if (E.ep && !E.ep.hidden) closeEditRef();
     if (E.aiPanel && !E.aiPanel.hidden) closeAiPanel();
@@ -1971,8 +1992,160 @@
   curSubject = bestSubject();
   renderSubjects();
 
+  /* ============================================================
+     AI 闪卡自测（求知页「自测」按钮）—— 学习闭环的「自测」一环
+     AI 依据同科目笔记出 5 张问答卡 → 翻卡自评（掌握 / 模糊 / 不会）→
+     小结写进 prefs.flashcards，供「我的 → AI 学情报告」跨科目汇总。
+     AI 不可用 / 出题失败：按笔记标题与摘要本地拼卡，如实标注「本地出题」。
+     ============================================================ */
+  var FC_SYS = '你是学习闪卡出题器。基于学生的同科目笔记出恰好 5 张自测闪卡，' +
+    '覆盖不同知识点的关键概念、公式与易错点，问题要能凭记忆作答。' +
+    '只输出一个 JSON 数组，不要代码围栏、不要任何解释文字，格式：\n' +
+    '[{"q":"问题（不超过40字）","a":"标准答案（不超过80字）"}]';
+  var fc = { busy: false, subject: '', cards: [], idx: 0, grades: [], by: '' };
+
+  function fcParse(text) {
+    var s = String(text || '').replace(/```[a-zA-Z]*/g, '').replace(/```/g, '').trim();
+    var i = s.indexOf('['), j = s.lastIndexOf(']');
+    if (i < 0 || j <= i) return [];
+    var raw = s.slice(i, j + 1);
+    var arr = null;
+    try { arr = JSON.parse(raw); } catch (e) {}
+    if (!arr) { try { arr = JSON.parse(raw.replace(/,\s*([}\]])/g, '$1')); } catch (e2) { return []; } }
+    if (!Object.prototype.toString.call(arr) === '[object Array]') return [];
+    var out = [];
+    (arr || []).forEach(function (c) {
+      if (!c) return;
+      var q = String(c.q || c.question || '').trim();
+      var a = String(c.a || c.answer || '').trim();
+      if (q && a) out.push({ q: q.slice(0, 60), a: a.slice(0, 120) });
+    });
+    return out;
+  }
+  /* 本地兜底出题：每篇笔记一张「核心要点」卡（标题 + 摘要 / 正文首行） */
+  function fcLocalCards(notes) {
+    var out = [];
+    notes.slice(0, 5).forEach(function (n) {
+      var q = '「' + (n.title || '这篇笔记') + '」的核心要点是什么？';
+      var a = String(n.desc || '').trim();
+      if (!a) { var ls = bodyLinesOf(n); a = ls.length ? ls[0] : ''; }
+      out.push({ q: q, a: a.slice(0, 80) });
+    });
+    return out;
+  }
+  function fcBuild(subject) {
+    var notes = notesOf(subject);
+    if (!notes.length) return Promise.reject(new Error('「' + subject + '」还没有笔记，先去写一篇再来自测'));
+    var ask = Promise.resolve(null);
+    if (window.NHAI) {
+      var outline = notes.slice(0, 8).map(function (n, i) {
+        return (i + 1) + '．' + (n.title || '') + '\n' + bodyTextOf(n).slice(0, 500);
+      }).join('\n\n');
+      ask = window.NHAI.chat([
+        { role: 'system', content: FC_SYS },
+        { role: 'user', content: '科目：' + subject + '\n\n我的笔记：\n' + outline }
+      ], { thinking: false, temperature: 0.4 }).catch(function () { return null; });
+    }
+    return ask.then(function (r) {
+      var cards = r ? fcParse(r.content) : null;
+      if (cards && cards.length) return { cards: cards.slice(0, 6), by: 'ai' };
+      return { cards: fcLocalCards(notes), by: 'local' };
+    });
+  }
+  function fcSetFace(showA) {
+    E.fcQ.hidden = showA;
+    E.fcA.hidden = !showA;
+    E.fcHint.textContent = showA ? '凭记忆对照：答对了算掌握' : '先想一想，点卡片看答案';
+    E.fcGrades.hidden = !showA;
+  }
+  function fcShow() {
+    var c = fc.cards[fc.idx];
+    E.fcCard.disabled = !c;
+    if (!c) return;
+    E.fcQ.textContent = c.q;
+    E.fcA.textContent = c.a;
+    E.fcProgress.textContent = (fc.idx + 1) + ' / ' + fc.cards.length;
+    fcSetFace(false);
+  }
+  function fcStart(subject) {
+    if (fc.busy) return;
+    fc.busy = true;
+    fc.subject = subject;
+    fc.cards = []; fc.idx = 0; fc.grades = []; fc.by = '';
+    if (E.fcPanel.hidden && window.NHFocus) NHFocus.push(E.fcPanel);
+    E.fcTitle.textContent = '闪卡自测 · ' + subject;
+    E.fcSrc.textContent = 'AI 正在依据同科目笔记出题…';
+    E.fcSummary.hidden = true;
+    E.fcGrades.hidden = true;
+    E.fcHint.hidden = true;
+    E.fcProgress.textContent = '';
+    E.fcCard.disabled = true;
+    E.fcQ.hidden = false;
+    E.fcQ.textContent = '出题中…';
+    E.fcA.textContent = '';
+    E.fcA.hidden = true;
+    E.fcPanel.hidden = false;
+    fcBuild(subject).then(function (res) {
+      fc.busy = false;
+      fc.cards = res.cards;
+      fc.by = res.by;
+      E.fcSrc.textContent = res.by === 'ai'
+        ? ('AI 依据你「' + subject + '」的笔记出题')
+        : '本地出题（AI 未配置或失败，基于笔记标题与摘要）';
+      E.fcHint.hidden = false;
+      fcShow();
+    }).catch(function (err) {
+      fc.busy = false;
+      fcClose();
+      toast((err && err.message) || '出题失败', 'err');
+    });
+  }
+  function fcFinish() {
+    var g = 0, m = 0, b = 0;
+    fc.grades.forEach(function (x) { if (x === 'good') g++; else if (x === 'mid') m++; else b++; });
+    E.fcCard.disabled = true;
+    E.fcQ.hidden = true;
+    E.fcA.hidden = true;
+    E.fcHint.hidden = true;
+    E.fcGrades.hidden = true;
+    E.fcProgress.textContent = '完成';
+    E.fcScore.textContent = '掌握 ' + g + ' · 模糊 ' + m + ' · 不会 ' + b;
+    E.fcNote.textContent = (fc.by === 'ai' ? 'AI 出题 · ' : '本地出题 · ') +
+      '结果已计入学情记录，「我的 → AI 学情报告」可以看到跨科目的汇总分析。';
+    E.fcSummary.hidden = false;
+    var store = NHUser.getPrefs('flashcards');
+    store[fc.subject] = {
+      at: Date.now(), by: fc.by, total: fc.cards.length, good: g, mid: m, bad: b,
+      cards: fc.cards.map(function (c, i) { return { q: c.q, a: c.a, grade: fc.grades[i] || '' }; })
+    };
+    NHUser.setPrefs('flashcards', store);
+    if (window.NHMe && NHMe.refresh) NHMe.refresh();
+  }
+  function fcClose() {
+    if (E.fcPanel.hidden) return;
+    if (window.NHFocus) NHFocus.pop(E.fcPanel);
+    E.fcPanel.hidden = true;
+  }
+
+  if (E.fcCard) E.fcCard.addEventListener('click', function () {
+    if (fc.busy || E.fcCard.disabled || !E.fcSummary.hidden) return;
+    if (E.fcA.hidden) fcSetFace(true);
+  });
+  if (E.fcGrades) E.fcGrades.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.fgrade') : null;
+    if (!b || fc.busy || E.fcGrades.hidden) return;
+    fc.grades.push(b.getAttribute('data-grade'));
+    fc.idx++;
+    if (fc.idx < fc.cards.length) { fcShow(); return; }
+    fcFinish();
+  });
+  if (E.fcClose) E.fcClose.addEventListener('click', fcClose);
+  if (E.fcDone) E.fcDone.addEventListener('click', fcClose);
+  if (E.fcAgain) E.fcAgain.addEventListener('click', function () { fcStart(fc.subject); });
+
   window.NHExplore = {
     onShow: onShow,
+    openQuiz: function (sub) { fcStart(sub || curSubject); },
     subject: function () { return curSubject; },
     tree: function () { return curTree; },
     /* 供搜索页检索社区内容（返回演示数据原文，只读） */

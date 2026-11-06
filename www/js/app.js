@@ -324,12 +324,54 @@
     });
   }
 
+  /* 极简 Markdown → HTML（标题/列表/代码/引用/粗斜体/链接/分段）
+     对话气泡与「AI 学情报告」共用；AI 输出一律先转义再套标签，杜绝注入 */
+  function mdToHtml(src) {
+    if (!src) return '';
+    var esc = function (s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    var out = [], i = 0, lines = src.replace(/\r\n/g, '\n').split('\n');
+    while (i < lines.length) {
+      var ln = lines[i];
+      if (/^```/.test(ln)) {                       // 代码块
+        var buf = []; i++;
+        while (i < lines.length && !/^```/.test(lines[i])) { buf.push(esc(lines[i])); i++; }
+        i++; out.push('<pre><code>' + buf.join('\n') + '</code></pre>'); continue;
+      }
+      var h = ln.match(/^(#{1,3})\s+(.*)$/);
+      if (h) { out.push('<h' + h[1].length + '>' + inline(h[2]) + '</h' + h[1].length + '>'); i++; continue; }
+      if (/^>\s?/.test(ln)) { out.push('<blockquote>' + inline(ln.replace(/^>\s?/, '')) + '</blockquote>'); i++; continue; }
+      if (/^\s*[-*]\s+/.test(ln)) {               // 无序列表
+        var ul = [];
+        while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { ul.push('<li>' + inline(lines[i].replace(/^\s*[-*]\s+/, '')) + '</li>'); i++; }
+        out.push('<ul>' + ul.join('') + '</ul>'); continue;
+      }
+      if (/^\s*\d+\.\s+/.test(ln)) {              // 有序列表
+        var ol = [];
+        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { ol.push('<li>' + inline(lines[i].replace(/^\s*\d+\.\s+/, '')) + '</li>'); i++; }
+        out.push('<ol>' + ol.join('') + '</ol>'); continue;
+      }
+      if (ln.trim() === '') { i++; continue; }
+      var para = [];
+      while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,3}\s|>\s?|\s*[-*]\s+|\s*\d+\.\s+|```)/.test(lines[i])) { para.push(esc(lines[i])); i++; }
+      out.push('<p>' + inline(para.join('<br>')) + '</p>');
+    }
+    function inline(s) {
+      s = esc(s);
+      s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+      s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>');
+      s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      return s;
+    }
+    return out.join('');
+  }
+
   window.NHBody = {
     esc: esc, clean: clean, blocks: blocks, text: text, lines: lines,
     firstImg: firstImg, count: count, html: html, stripTags: stripTags, isMedia: isMedia,
     fmtSize: fmtSize, fmtDur: fmtDur, docKind: docKind,
     fragments: fragments, wrapTag: wrapTag, hasRich: hasRich,
-    fileToDataUrl: fileToDataUrl, shrink: shrink
+    fileToDataUrl: fileToDataUrl, shrink: shrink, mdToHtml: mdToHtml
   };
 })();
 
@@ -2398,6 +2440,8 @@
     all: function () { return notes; },
     find: findById,
     render: renderList,
+    /* 演示笔记母本（「演示模式」一键载入时克隆成新的一套） */
+    seedSet: SEED,
     /* 底栏切页时调用：页面从隐藏恢复可见，补渲染隐藏期间被延迟的那次列表刷新 */
     onPageShow: function () { if (notesDirty) renderList(); },
     openEditor: openEditor,
@@ -3292,46 +3336,7 @@
       '【笔记标题】' + c.title + '\n【笔记内容】\n' + c.text };
   }
 
-  /* ---------- 极简 Markdown → HTML（标题/列表/代码/引用/粗斜体/链接/分段） ---------- */
-  function mdToHtml(src) {
-    if (!src) return '';
-    var esc = function (s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-    var out = [], i = 0, lines = src.replace(/\r\n/g, '\n').split('\n');
-    while (i < lines.length) {
-      var ln = lines[i];
-      if (/^```/.test(ln)) {                       // 代码块
-        var buf = []; i++;
-        while (i < lines.length && !/^```/.test(lines[i])) { buf.push(esc(lines[i])); i++; }
-        i++; out.push('<pre><code>' + buf.join('\n') + '</code></pre>'); continue;
-      }
-      var h = ln.match(/^(#{1,3})\s+(.*)$/);
-      if (h) { out.push('<h' + h[1].length + '>' + inline(h[2]) + '</h' + h[1].length + '>'); i++; continue; }
-      if (/^>\s?/.test(ln)) { out.push('<blockquote>' + inline(ln.replace(/^>\s?/, '')) + '</blockquote>'); i++; continue; }
-      if (/^\s*[-*]\s+/.test(ln)) {               // 无序列表
-        var ul = [];
-        while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) { ul.push('<li>' + inline(lines[i].replace(/^\s*[-*]\s+/, '')) + '</li>'); i++; }
-        out.push('<ul>' + ul.join('') + '</ul>'); continue;
-      }
-      if (/^\s*\d+\.\s+/.test(ln)) {              // 有序列表
-        var ol = [];
-        while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) { ol.push('<li>' + inline(lines[i].replace(/^\s*\d+\.\s+/, '')) + '</li>'); i++; }
-        out.push('<ol>' + ol.join('') + '</ol>'); continue;
-      }
-      if (ln.trim() === '') { i++; continue; }
-      var para = [];
-      while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,3}\s|>\s?|\s*[-*]\s+|\s*\d+\.\s+|```)/.test(lines[i])) { para.push(esc(lines[i])); i++; }
-      out.push('<p>' + inline(para.join('<br>')) + '</p>');
-    }
-    function inline(s) {
-      s = esc(s);
-      s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-      s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
-      s = s.replace(/(^|[^*])\*([^*]+)\*/g, '$1<i>$2</i>');
-      s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-      return s;
-    }
-    return out.join('');
-  }
+  var mdToHtml = NHBody.mdToHtml;   // 统一实现（NHBody 内，学情报告共用）
 
   /* ---------- 统一走 NHAI（本地代理优先，失败回退直连） ---------- */
   function callDeepseek(messages) {
@@ -3799,7 +3804,9 @@
   function render() {
     if (meName) meName.textContent = NHUser.DEFAULT_USER;
     var total = (window.NHNotes && window.NHNotes.all()) ? window.NHNotes.all().length : 0;
-    if (meSub) meSub.textContent = '笔记助理 · 已记录 ' + total + ' 篇笔记';
+    var subN = (window.NHUser && NHUser.getTags) ? NHUser.getTags().length : 0;
+    if (meSub) meSub.textContent = '笔记助理 · 已记录 ' + total + ' 篇笔记' +
+      (subN ? ' · 覆盖 ' + subN + ' 个科目' : '');
 
     if (subNotes) {
       var g = NHUser.historyIndex().length;
@@ -4118,4 +4125,223 @@
 
   render();
   window.NHMapVersions = { refresh: render };
+})();
+
+/* ============================================================
+   「我的」· AI 学情报告（学习闭环的「诊断」一环）
+   汇总笔记分布 / 思维导图 / AI 问答 / 闪卡自测成绩 → AI 生成
+   Markdown 学情报告（概览、掌握面、薄弱环节、复习建议）。
+   AI 不可用时如实展示本地统计版，绝不伪装 AI 输出。
+   报告存 prefs.report（保留最近一次），可重复生成覆盖。
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var btn = document.getElementById('report-gen');
+  var bodyEl = document.getElementById('report-body');
+  var status = document.getElementById('report-status');
+  if (!btn || !bodyEl || !window.NHUser) return;
+
+  var REPORT_SYS =
+    '你是学习分析师。根据学生的学习数据（笔记分布、思维导图、AI 问答记录、闪卡自测成绩）' +
+    '生成一份简明的 Markdown 学情报告，帮助学生安排复习。结构固定为：\n' +
+    '# 学情概览（3~4 句总评）\n## 掌握较好的板块（3~5 条，具体到知识点）\n' +
+    '## 薄弱环节（2~4 条，并指出依据：自测答错 / 从未提问 / 长期未复习）\n' +
+    '## 下一步建议（3 条，具体可执行，如「重做导数压轴题相关的 2 篇笔记」）\n' +
+    '只输出 Markdown 正文，不要寒暄；数据里没有的不要编造。';
+
+  function gather() {
+    var notes = (window.NHNotes && NHNotes.all()) ? NHNotes.all() : [];
+    var subs = NHUser.getTags();
+    var bySub = {};
+    subs.forEach(function (s) { bySub[s] = { count: 0, titles: [] }; });
+    notes.forEach(function (n) {
+      if (!n) return;
+      if (!bySub[n.tag]) bySub[n.tag] = { count: 0, titles: [] };
+      bySub[n.tag].count++;
+      if (bySub[n.tag].titles.length < 8) bySub[n.tag].titles.push(n.title || '未命名');
+    });
+    var maps = NHUser.getMindmaps();
+    var mapOut = {};
+    Object.keys(maps).forEach(function (s) { mapOut[s] = { updatedAt: (maps[s] && maps[s].updatedAt) || 0 }; });
+    var chats = NHUser.getChats();
+    var chatOut = [];
+    Object.keys(chats).forEach(function (id) {
+      var arr = chats[id] || [];
+      if (!arr.length) return;
+      var n = window.NHNotes ? NHNotes.find(id) : null;
+      chatOut.push({ title: n ? (n.title || id) : id, msgs: arr.length, lastAt: arr[arr.length - 1].ts || 0 });
+    });
+    chatOut.sort(function (a, b) { return b.lastAt - a.lastAt; });
+    chatOut = chatOut.slice(0, 12);
+    var cards = NHUser.getPrefs('flashcards');
+    var cardOut = {};
+    Object.keys(cards).forEach(function (s) {
+      var c = cards[s] || {};
+      cardOut[s] = { by: c.by, total: c.total, good: c.good, mid: c.mid, bad: c.bad, at: c.at };
+    });
+    return { notes: notes.length, subjects: bySub, mindmaps: mapOut, chats: chatOut, flashcards: cardOut };
+  }
+
+  function localReport(g) {
+    var lines = ['# 学情概览（本地统计）',
+      'AI 暂不可用（未配置密钥或请求失败），先看本地统计：共 **' + g.notes + '** 篇笔记，覆盖 ' +
+      Object.keys(g.subjects).length + ' 个科目。'];
+    var t = 0, gd = 0;
+    Object.keys(g.flashcards).forEach(function (s) {
+      var c = g.flashcards[s];
+      t += c.total || 0; gd += c.good || 0;
+    });
+    lines.push('## 自测记录');
+    if (t) {
+      lines.push('- 累计自测 ' + t + ' 张闪卡，掌握率 ' + Math.round(gd * 100 / t) + '%。');
+      Object.keys(g.flashcards).forEach(function (s) {
+        var c = g.flashcards[s];
+        lines.push('- ' + s + '：掌握 ' + c.good + ' / 模糊 ' + c.mid + ' / 不会 ' + c.bad + '。');
+      });
+    } else {
+      lines.push('- 还没做过闪卡自测，去「求知」页点「自测」试一次。');
+    }
+    var chatted = g.chats.length;
+    lines.push('## AI 问答');
+    lines.push('- 已与 DeepSeek 深入讨论过 ' + chatted + ' 篇笔记。');
+    lines.push('## 建议');
+    lines.push('- 在「我的」页配置 DeepSeek 密钥后重新生成，可获得逐知识点的薄弱分析与复习计划。');
+    return lines.join('\n');
+  }
+
+  function fmtShort(ts) {
+    var d = new Date(ts), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function render() {
+    var rep = NHUser.getPrefs('report');
+    if (!rep || !rep.md) { bodyEl.hidden = true; bodyEl.innerHTML = ''; return; }
+    bodyEl.innerHTML = (window.NHBody && NHBody.mdToHtml) ? NHBody.mdToHtml(rep.md) : '<p>' + NHBody.esc(rep.md) + '</p>';
+    bodyEl.hidden = false;
+    status.textContent = '生成于 ' + fmtShort(rep.at) + (rep.by === 'ai' ? ' · AI 生成' : ' · 本地统计版');
+  }
+
+  var busy = false;
+  btn.addEventListener('click', function () {
+    if (busy) return;
+    busy = true;
+    btn.disabled = true;
+    status.textContent = '正在汇总学习数据并生成报告…';
+    var g = gather();
+    function finish(md, by) {
+      NHUser.setPrefs('report', { at: Date.now(), md: md, by: by });
+      render();
+      busy = false;
+      btn.disabled = false;
+    }
+    if (!window.NHAI) { finish(localReport(g), 'local'); return; }
+    window.NHAI.chat([
+      { role: 'system', content: REPORT_SYS },
+      { role: 'user', content: JSON.stringify(g) }
+    ], { thinking: false, temperature: 0.4 }).then(function (r) {
+      var md = (r.content || '').trim();
+      if (!md) throw new Error('AI 返回了空报告');
+      finish(md, 'ai');
+    }).catch(function (err) {
+      finish(localReport(g), 'local');
+      status.textContent = 'AI 生成失败（' + ((err && err.message) || '未知错误') + '），已展示本地统计版';
+    });
+  });
+
+  render();
+})();
+
+/* ============================================================
+   「我的」· 演示模式：比赛 / 答辩现场一键就绪
+   一键写入精选演示数据：18 篇演示笔记（含历史版本）、数学思维导图
+   （AI 版）+ 1 条数学笔记的示例对话、数学闪卡自测记录、2 篇收藏。
+   可反复执行覆盖（二次确认防误触），刷新后立即进入最佳演示状态。
+   示例对话 / 自测记录均为预置演示内容，界面文案已如实说明。
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var btn = document.getElementById('demo-load');
+  var status = document.getElementById('demo-status');
+  if (!btn || !window.NHUser || !window.NHNotes) return;
+
+  function say(msg, cls) {
+    if (!status) return;
+    status.textContent = msg;
+    status.className = 'me-status' + (cls ? ' ' + cls : '');
+  }
+
+  btn.addEventListener('click', function () {
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = '再点一次确认载入（将覆盖当前数据）';
+      setTimeout(function () {
+        if (btn.dataset.armed === '1') { delete btn.dataset.armed; btn.textContent = '一键载入演示数据'; }
+      }, 4000);
+      return;
+    }
+    delete btn.dataset.armed;
+    btn.textContent = '一键载入演示数据';
+
+    var seed = NHNotes.seedSet;
+    if (!seed || !seed.length) { say('演示数据不可用', 'err'); return; }
+
+    /* 清掉旧痕迹，从零铺一套 */
+    NHUser.clearHistory(null);
+    NHUser.clearMapHistory(null);
+    var now = Date.now();
+    var notes = seed.map(function (n, i) {
+      var c = JSON.parse(JSON.stringify(n));
+      c.id = 'n_' + now.toString(36) + i.toString(36);
+      c.images = []; c.audios = [];
+      c.createdAt = now - (seed.length - i) * 60000;
+      c.updatedAt = c.createdAt;
+      return c;
+    });
+    if (!NHUser.setNotes(notes)) { say('载入失败：本地存储空间不足', 'err'); return; }
+    notes.forEach(function (n) { NHUser.addVersion(n.id, n, 'create'); });
+
+    /* 数学思维导图（演示版，标 AI 生成） */
+    var node = function (t, kids) {
+      return { id: 'dm_' + Math.random().toString(36).slice(2, 8), text: t, children: kids || [] };
+    };
+    var tree = node('数学', [
+      node('导数与单调性', [node('导数符号判单调'), node('压轴题破题信号')]),
+      node('二次函数', [node('顶点坐标公式'), node('最值分类讨论')]),
+      node('三角函数化简', [node('切化弦'), node('降幂与辅助角')]),
+      node('概率与统计', [node('贝叶斯公式三步')])
+    ]);
+    var map = { subject: '数学', by: 'ai', guide: '', updatedAt: now, root: tree };
+    NHUser.setMindmap('数学', map);
+    NHUser.addMapVersion('数学', map, 'gen');
+
+    /* 示例对话（挂在第一篇数学笔记上，预置演示内容） */
+    var mathNote = null;
+    notes.forEach(function (n) { if (!mathNote && n.tag === '数学') mathNote = n; });
+    if (mathNote) {
+      var store = {};
+      store[mathNote.id] = [
+        { role: 'user', content: '二次函数什么时候取最大值，什么时候取最小值？', ts: now - 40000 },
+        { role: 'assistant', content: '看**开口方向**：\n\n- `a > 0` 开口向上，顶点处取**最小值**；\n- `a < 0` 开口向下，顶点处取**最大值**。\n\n顶点横坐标是 `x = -b/(2a)`，代回即可求出最值。', ts: now - 30000 }
+      ];
+      NHUser.setChats(store);
+    }
+
+    /* 闪卡自测记录 + 收藏的社区笔记 */
+    NHUser.setPrefs('flashcards', { '数学': {
+      at: now, by: 'ai', total: 5, good: 3, mid: 1, bad: 1,
+      cards: [
+        { q: '二次函数 y=ax²+bx+c 的顶点横坐标是什么？', a: 'x = -b/(2a)，代回解析式即得最值。', grade: 'good' },
+        { q: 'a>0 与 a<0 时，顶点分别是最小值还是最大值？', a: 'a>0 开口向上取最小值；a<0 开口向下取最大值。', grade: 'good' },
+        { q: '导数 f′(x)>0 说明函数在区间上怎样变化？', a: '单调递增；f′(x)<0 时单调递减。', grade: 'good' },
+        { q: '「切化弦」一般用在什么场合？', a: '式子里 tan 与 sin/cos 混合出现时，统一成弦函数再化简。', grade: 'mid' },
+        { q: '辅助角公式 a·sinx+b·cosx 可以合成什么形式？', a: '√(a²+b²)·sin(x+φ)，其中 tanφ=b/a。', grade: 'bad' }
+      ]
+    }});
+    NHUser.setPrefs('community', { stars: { c2: true, c10: true } });
+
+    say('演示数据已就绪，正在刷新…', 'ok');
+    setTimeout(function () { location.reload(); }, 600);
+  });
 })();

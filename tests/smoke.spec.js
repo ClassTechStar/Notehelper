@@ -50,11 +50,21 @@ async function mockAI(page) {
         items: [{ kind: 'note', id: '____________', score: 90, why: '测试理由' }]
       })) });
     }
-    if (sys.indexOf('知识梳理') >= 0 || sys.indexOf('思维导图') >= 0) {
+    if (sys.indexOf('知识梳理助手') >= 0) {
       return route.fulfill({ json: chatReply(JSON.stringify(TREE)) });
     }
     if (sys.indexOf('摘要器') >= 0) {
       return route.fulfill({ json: chatReply('这是一条 AI 生成的测试摘要') });
+    }
+    if (sys.indexOf('闪卡出题器') >= 0) {
+      return route.fulfill({ json: chatReply(JSON.stringify([
+        { q: '模拟问题一？', a: '模拟答案一' }, { q: '模拟问题二？', a: '模拟答案二' },
+        { q: '模拟问题三？', a: '模拟答案三' }, { q: '模拟问题四？', a: '模拟答案四' },
+        { q: '模拟问题五？', a: '模拟答案五' }
+      ])) });
+    }
+    if (sys.indexOf('学习分析师') >= 0) {
+      return route.fulfill({ json: chatReply('# 学情概览\n模拟报告：整体掌握扎实，导数压轴题需加强。\n\n## 下一步建议\n- 重做导数压轴题相关笔记') });
     }
     if (sys.indexOf('恰好 2 个问题') >= 0) {
       return route.fulfill({ json: chatReply('追问一？\n追问二？') });
@@ -228,5 +238,69 @@ test.describe('Notehelper 冒烟', function () {
     expect(keptWhileHidden).toBe(true);
     expect(rebuiltWhenVisible).toBe(true);
     expect(total).toBe(18);                               // 种子笔记一个不少
+  });
+
+  test('9. AI 闪卡自测（mock）→ 翻卡作答 → 小结入库', async function ({ page }) {
+    await mockAI(page);
+    await page.goto('/');
+    await page.click('.nav-item[aria-label="求知"]');
+    await expect(page.locator('#mmStatus')).toContainText('已根据', { timeout: 10000 });
+    await page.click('#mmQuiz');
+    await expect(page.locator('#fcardPanel')).toBeVisible();
+    await expect(page.locator('#fcardQ')).toContainText('模拟问题一');
+    await expect(page.locator('#fcardProgress')).toContainText('1 / 5');
+    await page.click('#fcardCard');                       // 翻看答案
+    await expect(page.locator('#fcardGrades')).toBeVisible();
+    await page.click('.fgrade[data-grade="good"]');
+    await expect(page.locator('#fcardQ')).toContainText('模拟问题二');
+    // 快进答完剩余 4 张（mid / good / good / bad → 共 3 掌握 1 模糊 1 不会）
+    var grades = ['mid', 'good', 'good', 'bad'];
+    for (var i = 0; i < grades.length; i++) {
+      await page.click('#fcardCard');
+      await page.click('.fgrade[data-grade="' + grades[i] + '"]');
+    }
+    await expect(page.locator('#fcardSummary')).toBeVisible();
+    await expect(page.locator('#fcardScore')).toContainText('掌握 3');
+    var sub = await page.evaluate(function () { return window.NHExplore.subject(); });
+    var fc = await page.evaluate(function (s) { return NHUser.getPrefs('flashcards')[s] || null; }, sub);
+    expect(fc && fc.total).toBe(5);
+    expect(fc.good).toBe(3);
+    await page.click('#fcardDone');
+    await expect(page.locator('#fcardPanel')).toBeHidden();
+  });
+
+  test('10. AI 学情报告（mock）', async function ({ page }) {
+    await mockAI(page);
+    await page.goto('/');
+    await page.click('.nav-item[aria-label="我的"]');
+    await page.click('#report-gen');
+    await expect(page.locator('#report-body')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#report-body')).toContainText('学情概览');
+    await expect(page.locator('#report-status')).toContainText('AI 生成');
+    var rep = await page.evaluate(function () { return NHUser.getPrefs('report'); });
+    expect(rep && rep.by).toBe('ai');
+  });
+
+  test('11. 演示模式一键载入', async function ({ page }) {
+    await mockAI(page);
+    await page.goto('/');
+    await page.click('.nav-item[aria-label="我的"]');
+    await page.click('#demo-load');                       // 第一次：进入待确认
+    await page.click('#demo-load');                       // 第二次：确认载入
+    await page.waitForTimeout(1500);                      // 自动刷新
+    var info = await page.evaluate(function () {
+      return {
+        notes: (window.NHNotes.all() || []).length,
+        map: !!(NHUser.getMindmap('数学') && NHUser.getMindmap('数学').root),
+        chats: Object.keys(NHUser.getChats()).length,
+        stars: Object.keys(NHUser.getPrefs('community').stars || {}).length,
+        flash: !!(NHUser.getPrefs('flashcards')['数学'])
+      };
+    });
+    expect(info.notes).toBe(18);
+    expect(info.map).toBe(true);
+    expect(info.chats).toBe(1);
+    expect(info.stars).toBe(2);
+    expect(info.flash).toBe(true);
   });
 });
