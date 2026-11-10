@@ -853,23 +853,9 @@
   /* ============================================================
      社区推荐流（演示数据：其它作者的笔记）
      ============================================================ */
-  function shade(hex, amt) {
-    var h = String(hex).replace('#', '');
-    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    var n = parseInt(h, 16);
-    var r = clamp(((n >> 16) & 255) + amt, 0, 255);
-    var g = clamp(((n >> 8) & 255) + amt, 0, 255);
-    var b = clamp((n & 255) + amt, 0, 255);
-    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-  }
   function coverStyle(tag, seed) {
-    var c = subColor(tag);
-    var v = [
-      'linear-gradient(135deg,' + shade(c, 26) + ' 0%,' + c + ' 100%)',
-      'linear-gradient(160deg,' + shade(c, -18) + ' 0%,' + c + ' 58%,' + shade(c, 40) + ' 100%)',
-      'linear-gradient(115deg,' + shade(c, 42) + ' 0%,' + c + ' 52%,' + shade(c, -22) + ' 100%)'
-    ];
-    return v[seed % v.length];
+    /* 实色封面（paper-study 系统）：渐变退役；纸纹与字色由 CSS 的 .c-cover 负责 */
+    return subColor(tag);
   }
 
   var COMMUNITY = [

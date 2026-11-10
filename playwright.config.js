@@ -9,11 +9,11 @@ module.exports = defineConfig({
   workers: 1,
   use: {
     viewport: { width: 402, height: 874 },
-    baseURL: 'http://localhost:8123'
+    baseURL: 'http://localhost:8199'
   },
   webServer: {
     command: 'node tests/server.js',
-    port: 8123,
+    port: 8199,
     reuseExistingServer: true,
     timeout: 15000
   }

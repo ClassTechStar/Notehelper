@@ -1,4 +1,5 @@
-// 冒烟测试用的极简静态服务器（零依赖）：serve ../www 于 8123 端口
+// 冒烟测试用的极简静态服务器（零依赖）：serve ../www
+// 端口选 8199：8123 这类常用端口易被本机其他开发服务器占用（复用错误服务会让测试打错应用）
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -22,4 +23,4 @@ http.createServer(function (req, res) {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream' });
     res.end(data);
   });
-}).listen(8123, function () { console.log('[test-server] http://localhost:8123'); });
+}).listen(8199, function () { console.log('[test-server] http://localhost:8199'); });
